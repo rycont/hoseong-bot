@@ -143,7 +143,8 @@ const questionTemplates: {
   정의(topic: FlatConcept) {
     return {
       text: `"${topic.label}"에 대해서 설명해주세요`,
-      answer: topic.description || "설명이 없습니다",
+      answer: topic.description ||
+        (topic.subconcepts && topic.subconcepts.join(", ")) || "설명이 없습니다",
     };
   },
   설명(topic: FlatConcept) {
