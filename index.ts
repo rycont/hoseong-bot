@@ -186,7 +186,6 @@ async function getQuestionsByPage(pageId: string) {
 
   const availableTemplates = [
     "정의",
-    !sampledConcept.validQuestions?.includes("X예시") && "예시",
     sampledConcept.description && "설명",
     sampledConcept.validQuestions?.includes("순서") &&
     sampledConcept.subconcepts && "순서",
