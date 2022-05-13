@@ -1,6 +1,7 @@
 import { parse } from "https://deno.land/std@0.138.0/encoding/yaml.ts";
 import { serve } from "https://deno.land/x/sift@0.5.0/mod.ts";
 import "https://deno.land/x/dotenv@v3.2.0/load.ts";
+import "https://raw.githubusercontent.com/rycont/josa-complete/master/src/index.ts";
 
 interface Concept {
   label: string;
@@ -33,15 +34,20 @@ type YamlBlock = {
 };
 
 function yaml2concept(yaml: YamlBlock) {
-  const [key, contents] = Object.entries(yaml)[0];
+  let [key, contents] = Object.entries(yaml)[0];
 
-  if (!contents) console.log("Content is null! ", yaml);
+  // if (!contents) console.log("Content is null! ", yaml);
+  if (!contents.map) {
+    contents = [contents as unknown as string];
+    console.log(typeof contents);
+    // contents = [contents];
+  }
 
   const concept: Concept = {
     ...labelParser(key),
     subconcepts: contents.map((content) => {
       if (typeof content === "string") {
-        return { ...labelParser(content) } as Concept;
+        return labelParser(content) as Concept;
       }
       return yaml2concept(content);
     }),
@@ -133,6 +139,12 @@ async function getPageContent(pageId: string) {
   return { text, pageTitle: response.data.title };
 }
 
+const concatHigherLevelConceptLabel = (label: string, path: string[]) => {
+  if (!label.startsWith("#")) return label;
+
+  return path[path.length - 1] + "의 " + label.slice(1).trim();
+};
+
 const questionTemplates: {
   [key: string]: (topic: FlatConcept) => {
     text: string;
@@ -142,7 +154,9 @@ const questionTemplates: {
 } = {
   정의(topic: FlatConcept) {
     return {
-      text: `"${topic.label}"에 대해서 설명해주세요`,
+      text: `"${
+        concatHigherLevelConceptLabel(topic.label, topic.path)
+      }"에 대해서 설명해주세요`,
       answer: topic.description ||
         (topic.subconcepts && topic.subconcepts.join(", ")) || "설명이 없습니다",
     };
@@ -150,25 +164,29 @@ const questionTemplates: {
   설명(topic: FlatConcept) {
     if (!topic.description) return null;
     return {
-      text: "다음 내용은 무엇에 관련된 내용인가요?",
+      text: `다음 내용은 무엇에 관련된 내용인가요?` +
+        ((topic.path.length && !topic.label.startsWith("#"))
+          ? ` (${topic.path[topic.path.length - 1]})`
+          : ""),
       additionalInfo: topic.description,
-      answer: topic.label,
+      answer: concatHigherLevelConceptLabel(topic.label, topic.path),
     };
   },
-  예시(topic) {
-    return {
-      text: `"${topic.label}"의 예시를 하나 들어주세요`,
-      answer: topic.description ||
-        (topic.subconcepts && topic.subconcepts.join(", ")) || "설명이 없습니다",
-    };
-  },
+  // 예시(topic) {
+  //   return {
+  //     text: `"${topic.label}"의 예시를 하나 들어주세요`,
+  //     answer: topic.description ||
+  //       (topic.subconcepts && topic.subconcepts.join(", ")) || "설명이 없습니다",
+  //   };
+  // },
   순서(topic) {
     if (!topic.subconcepts) return null;
     return {
       text: "다음 개념을 순서에 맞게 정렬해주세요",
-      additionalInfo: topic.subconcepts.sort(() => Math.random() - 0.5).join(
-        ", ",
-      ),
+      additionalInfo: [...topic.subconcepts].sort(() => Math.random() - 0.5)
+        .join(
+          ", ",
+        ),
       answer: topic.subconcepts.join(", "),
     };
   },
