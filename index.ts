@@ -56,10 +56,7 @@ function yaml2concept(yaml: YamlBlock) {
   return concept;
 }
 
-function flattenConcepts(
-  concept: Concept,
-  path: string[],
-): FlatConcept[] {
+function flattenConcepts(concept: Concept, path: string[]): FlatConcept[] {
   if (concept.subconcepts) {
     return [
       {
@@ -77,12 +74,14 @@ function flattenConcepts(
 
   if (!concept.description) return [];
 
-  return [{
-    label: concept.label,
-    description: concept.description,
-    path,
-    validQuestions: concept.validQuestions,
-  }];
+  return [
+    {
+      label: concept.label,
+      description: concept.description,
+      path,
+      validQuestions: concept.validQuestions,
+    },
+  ];
 }
 
 async function getPagesInCollection(collectionId: string) {
@@ -118,23 +117,27 @@ async function getPageContent(pageId: string) {
     })
   ).json();
 
-  let text = (response.data.text as string).trim().replaceAll("* ", "- ")
+  let text = (response.data.text as string)
+    .trim()
+    .replaceAll("* ", "- ")
     .replaceAll("\n\n", "\n");
 
   if (text[text.length - 1] === "\\") text = text.slice(0, -1);
 
-  text = text.split("\n").filter((e) => e.trim().length).map(
-    (line, index, document) => {
+  text = text
+    .split("\n")
+    .filter((e) => e.trim().length)
+    .map((line, index, document) => {
       if (document.length - 1 === index) return line;
       if (
-        (document[index + 1].indexOf(document[index + 1].trim()[0]) >
-          line.indexOf(line.trim()[0]))
+        document[index + 1].indexOf(document[index + 1].trim()[0]) >
+        line.indexOf(line.trim()[0])
       ) {
         return line + ":";
       }
       return line;
-    },
-  ).join("\n");
+    })
+    .join("\n");
 
   return { text, pageTitle: response.data.title };
 }
@@ -154,18 +157,22 @@ const questionTemplates: {
 } = {
   정의(topic: FlatConcept) {
     return {
-      text: `"${
-        concatHigherLevelConceptLabel(topic.label, topic.path)
-      }"에 대해서 설명해주세요`,
-      answer: topic.description ||
-        (topic.subconcepts && topic.subconcepts.join(", ")) || "설명이 없습니다",
+      text: `"${concatHigherLevelConceptLabel(
+        topic.label,
+        topic.path
+      )}"에 대해서 설명해주세요`,
+      answer:
+        topic.description ||
+        (topic.subconcepts && topic.subconcepts.join(", ")) ||
+        "설명이 없습니다",
     };
   },
   설명(topic: FlatConcept) {
     if (!topic.description) return null;
     return {
-      text: `다음 내용은 무엇에 관련된 내용인가요?` +
-        ((topic.path.length && !topic.label.startsWith("#"))
+      text:
+        `다음 내용은 무엇에 관련된 내용인가요?` +
+        (topic.path.length && !topic.label.startsWith("#")
           ? ` (${topic.path[topic.path.length - 1]})`
           : ""),
       additionalInfo: topic.description,
@@ -183,10 +190,9 @@ const questionTemplates: {
     if (!topic.subconcepts) return null;
     return {
       text: "다음 개념을 순서에 맞게 정렬해주세요",
-      additionalInfo: [...topic.subconcepts].sort(() => Math.random() - 0.5)
-        .join(
-          ", ",
-        ),
+      additionalInfo: [...topic.subconcepts]
+        .sort(() => Math.random() - 0.5)
+        .join(", "),
       answer: topic.subconcepts.join(", "),
     };
   },
@@ -206,45 +212,57 @@ async function getQuestionsByPage(pageId: string) {
     "정의",
     sampledConcept.description && "설명",
     sampledConcept.validQuestions?.includes("순서") &&
-    sampledConcept.subconcepts && "순서",
+      sampledConcept.subconcepts &&
+      "순서",
   ].filter(Boolean);
 
-  const template = questionTemplates[
-    availableTemplates[
-      Math.floor(Math.random() * availableTemplates.length)
-    ] as string
-  ];
+  const template =
+    questionTemplates[
+      availableTemplates[
+        Math.floor(Math.random() * availableTemplates.length)
+      ] as string
+    ];
 
   const question = template(sampledConcept)!;
-  return { ...question, path: [pageTitle, ...sampledConcept.path] };
+  return {
+    ...question,
+    path: [pageTitle, ...sampledConcept.path],
+    label: sampledConcept.label,
+  };
 }
 
 const BOT_TOKEN = Deno.env.get("BOT_TOKEN");
 
 async function sendMessage(target: string, message: string) {
   console.log(
-    await (await fetch(
-      `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
-      {
+    await (
+      await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
         body: JSON.stringify({
           chat_id: target,
-          text: message.replaceAll("(", "\\(").replaceAll(")", "\\)")
+          text: message
+            .replaceAll("(", "\\(")
+            .replaceAll(")", "\\)")
             .replaceAll(".", "\\."),
           parse_mode: "MarkdownV2",
           reply_markup: {
-            keyboard: [[{
-              text: "👍",
-            }, {
-              text: "👎",
-            }]],
+            keyboard: [
+              [
+                {
+                  text: "👍",
+                },
+                {
+                  text: "👎",
+                },
+              ],
+            ],
           },
         }),
         headers: new Headers({
           "Content-Type": "application/json",
         }),
         method: "POST",
-      },
-    )).json(),
+      })
+    ).json()
   );
 }
 
@@ -259,11 +277,17 @@ serve({
     const textQuestion = [
       "Q) " + question.text,
       question.additionalInfo
-        ? ("```\n" + question.additionalInfo + "\n```")
+        ? "```\n" + question.additionalInfo + "\n```"
         : "",
       "A) ||" + question.answer + "||",
-      question.path && ("\n범위: " + question.path.join(" \\> ")),
-    ].filter(Boolean).join("\n");
+      question.path &&
+        "\n범위: " +
+          question.path
+            .slice(0, question.label.startsWith("#") ? -1 : undefined)
+            .join(" \\> "),
+    ]
+      .filter(Boolean)
+      .join("\n");
 
     await sendMessage(sender, textQuestion);
     return new Response("");
