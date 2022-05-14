@@ -26,6 +26,7 @@ function labelParser(label: string) {
       validQuestions: spec?.split(",").map((e) => e.trim()),
     };
   }
+
   return { label: sanitized };
 }
 
@@ -33,14 +34,13 @@ type YamlBlock = {
   [key: string]: (string | YamlBlock)[];
 };
 
-function yaml2concept(yaml: YamlBlock) {
+function yaml2concept(yaml: YamlBlock | string) {
+  if (typeof yaml === "string") return labelParser(yaml);
+
   let [key, contents] = Object.entries(yaml)[0];
 
-  // if (!contents) console.log("Content is null! ", yaml);
   if (!contents.map) {
     contents = [contents as unknown as string];
-    console.log(typeof contents);
-    // contents = [contents];
   }
 
   const concept: Concept = {
@@ -49,7 +49,8 @@ function yaml2concept(yaml: YamlBlock) {
       if (typeof content === "string") {
         return labelParser(content) as Concept;
       }
-      return yaml2concept(content);
+
+      return yaml2concept(content as YamlBlock);
     }),
   };
 
@@ -199,71 +200,81 @@ const questionTemplates: {
 };
 
 async function getQuestionsByPage(pageId: string) {
-  const { text, pageTitle } = await getPageContent(pageId);
-  const parsed = parse(text);
+  try {
+    const { text, pageTitle } = await getPageContent(pageId);
+    const parsed = parse(text);
 
-  const concepts = (parsed as YamlBlock[]).map(yaml2concept);
-  const flattenedConcepts = concepts.flatMap((e) => flattenConcepts(e, []));
+    // console.log(JSON.stringify(parsed, null, 2));
+    const concepts = (parsed as YamlBlock[]).map(yaml2concept);
 
-  const sampledConcept =
-    flattenedConcepts[Math.floor(Math.random() * flattenedConcepts.length)];
+    console.clear();
+    // console.log(JSON.stringify(parsed, null, 2));
 
-  const availableTemplates = [
-    "정의",
-    sampledConcept.description && "설명",
-    sampledConcept.validQuestions?.includes("순서") &&
-      sampledConcept.subconcepts &&
-      "순서",
-  ].filter(Boolean);
+    const flattenedConcepts = concepts.flatMap((e) => flattenConcepts(e, []));
 
-  const template =
-    questionTemplates[
-      availableTemplates[
-        Math.floor(Math.random() * availableTemplates.length)
-      ] as string
-    ];
+    const sampledConcept =
+      flattenedConcepts[Math.floor(Math.random() * flattenedConcepts.length)];
 
-  const question = template(sampledConcept)!;
-  return {
-    ...question,
-    path: [pageTitle, ...sampledConcept.path],
-    label: sampledConcept.label,
-  };
+    const availableTemplates = [
+      "정의",
+      sampledConcept.description && "설명",
+      sampledConcept.validQuestions?.includes("순서") &&
+        sampledConcept.subconcepts &&
+        "순서",
+    ].filter(Boolean);
+
+    const template =
+      questionTemplates[
+        availableTemplates[
+          Math.floor(Math.random() * availableTemplates.length)
+        ] as string
+      ];
+
+    const question = template(sampledConcept)!;
+    return {
+      ...question,
+      path: [pageTitle, ...sampledConcept.path],
+      label: sampledConcept.label,
+    };
+  } catch (e) {
+    console.log("Error while parsing page occured");
+    console.log("Document id:", pageId);
+
+    throw e;
+  }
 }
 
 const BOT_TOKEN = Deno.env.get("BOT_TOKEN");
 
 async function sendMessage(target: string, message: string) {
-  console.log(
-    await (
-      await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-        body: JSON.stringify({
-          chat_id: target,
-          text: message
-            .replaceAll("(", "\\(")
-            .replaceAll(")", "\\)")
-            .replaceAll(".", "\\."),
-          parse_mode: "MarkdownV2",
-          reply_markup: {
-            keyboard: [
-              [
-                {
-                  text: "👍",
-                },
-                {
-                  text: "👎",
-                },
-              ],
+  await (
+    await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+      body: JSON.stringify({
+        chat_id: target,
+        text: message
+          .replaceAll("(", "\\(")
+          .replaceAll(")", "\\)")
+          .replaceAll(".", "\\."),
+        parse_mode: "MarkdownV2",
+        reply_markup: {
+          keyboard: [
+            [
+              {
+                text: "👍",
+              },
+              {
+                text: "👎",
+              },
             ],
-          },
-        }),
-        headers: new Headers({
-          "Content-Type": "application/json",
-        }),
-        method: "POST",
-      })
-    ).json()
-  );
+          ],
+        },
+      }),
+      headers: new Headers({
+        "Content-Type": "application/json",
+      }),
+      method: "POST",
+    })
+  ).json();
 }
 
 serve({
